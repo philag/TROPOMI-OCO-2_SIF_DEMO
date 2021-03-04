@@ -86,12 +86,8 @@ IllinoisLonLat = Tuple.(Illinois.coordinates[1])
 # ╔═╡ fe40fcf4-7706-11eb-02c9-e9f8e2e1d59e
 md"# Reading Data for Illinois"
 
-# ╔═╡ 6f558260-7c5d-11eb-2f33-c7b983f49495
-md" **Define sensor here:**"
-
-# ╔═╡ 7c78f170-7c5d-11eb-3547-256ee2e742ea
-sensor = "TROPOMI"
-#sensor = "OCO-2"
+# ╔═╡ 3e1f7372-7c99-11eb-249f-bde291b5d012
+md"> **The following cells contain slightly modified functions from the first notebook.**"
 
 # ╔═╡ 3f8b6092-7c5b-11eb-39bc-f7e3291e6aac
 begin
@@ -105,6 +101,7 @@ begin
 			posY = findfirst("YYYY",FilePattern)
 			posM = findfirst("MM",FilePattern)
 			posD = findfirst("DD",FilePattern)
+			
 			allDates=Vector{Date}()
 			for file in basename.(allFiles)
 				push!(allDates,Date(file[posY]*file[posM]*file[posD], "yyyymmdd"))
@@ -132,7 +129,7 @@ begin
 	end
 	
 	
-	getFileIdx4Year = function(yyyy)	
+	getFileIdx4Year = function(yyyy, allDates)	
 		startDate = Date(yyyy,1,1)
 		stopDate  = Date(yyyy,12,31)
 		FileInd = findall(x -> x >= startDate && x <= stopDate, allDates)
@@ -171,7 +168,7 @@ begin
       		  	"lon": "longitude",
 				"sif": "SIF_757nm",
 				"measurement_mode": "measurement_mode",
-       		 	"time": "time",
+       		 	"time": "time"
 				},
 				"time_struc": "seconds since 1993-1-1 0:0:0"
 			}]
@@ -198,7 +195,7 @@ numberNames = function(what::String,nWhat::Int)
 end
 
 # now return DataFrame of filtered data:
-readNCdata = function(NCFiles,baseDict,polyLonLat)
+readNCdata = function(NCFiles, baseDict, polyLonLat)
 	
 	## strategy: 
 	##			- collect data for a minimum boundary box 
@@ -250,8 +247,8 @@ readNCdata = function(NCFiles,baseDict,polyLonLat)
 
 		if size(dfTmp)!=(0,0)
 			points = []
-			for i in 1:length(df.lon)
-				push!(points, (df.lons[i],df.lats[i]) )
+			for i in 1:length(dfTmp.lon)
+				push!(points, (dfTmp.lon[i],dfTmp.lat[i]) )
 			end
 
 			dfTmp.inside = [inpolygon(p, polyLonLat; in=true, on=true, out=false) for p in points]
@@ -280,22 +277,22 @@ end
 
 # ╔═╡ 2827c5b4-7c5c-11eb-1886-e323231c7c07
 begin
-	getOneYear = function(yyyy, polyLonLat, sensor="TROPOMI")
+	getOneYear = function(yyyy, polyLonLat::Array{Tuple{Float64,Float64},1}, sensor="TROPOMI")
 		
 		allFiles, allDates = getFiles(sensor)
 		baseDict = getBaseDict(sensor)
-		FileInd  = getFileIdx4Year(yyyy)
+		FileInd  = getFileIdx4Year(yyyy, allDates)
 		
 		df = readNCdata(allFiles[FileInd],baseDict,polyLonLat)
 		
 		############# Convert time strings to julia's date type
-		
 		# TROPOMI:
 		if sensor == "TROPOMI"
 			df.utc = unix2datetime.(df.time)
 		# OCO-2:
 		elseif sensor == "OCO-2"
-			filter!("measurement_mode" => ==(0), df)
+			## Keep or filter the other measurement modes for OCO-2:
+			#filter!("measurement_mode" => ==(0), df)
 			timeOffset = datetime2unix(DateTime(1993,1,1, 0,0,0))
 			df.utc = unix2datetime.(df.time .+ timeOffset)
 		end
@@ -310,9 +307,15 @@ end
 
 # ╔═╡ 72bc1716-770d-11eb-3f50-e91939e494b9
 begin
-		#Illinois2018 = getOneYear(2018, polyLonLat=IllinoisLonLat, sensor=sensor)
-		#Illinois2019 = getOneYear(2019, polyLonLat=IllinoisLonLat, sensor=sensor)
+		Illinois2018_TROPOMI = getOneYear(2018, IllinoisLonLat, "TROPOMI")
+		Illinois2019_TROPOMI = getOneYear(2019, IllinoisLonLat, "TROPOMI")
+
+		Illinois2018_OCO2 = getOneYear(2018, IllinoisLonLat, "OCO-2")
+		Illinois2019_OCO2 = getOneYear(2019, IllinoisLonLat, "OCO-2")
 end
+
+# ╔═╡ ad1fecac-7c99-11eb-3033-cbf183d0cdd3
+md" Reading two years of TROPOMI & OCO-2 data for Illinois took 163s for me, but it may take longer depending on the performance of your machine."
 
 # ╔═╡ 9ea08f84-770c-11eb-31c7-850f3244c4ff
 md"# Temporal Averaging"
@@ -368,15 +371,22 @@ end
 
 # ╔═╡ 0aca52ac-7709-11eb-0414-311256298017
 begin
-	av2018 = tempAv(Illinois2018, n_weeks, "sif")	
-	av2019 = tempAv(Illinois2019, n_weeks, "sif")	
+	av2018_TROPOMI = tempAv(Illinois2018_TROPOMI, n_weeks, "sif")	
+	av2019_TROPOMI = tempAv(Illinois2019_TROPOMI, n_weeks, "sif")	
 
-	plot(Dates.dayofyear.(av2018.avTime),av2018.mean; ribbon=av2018.sd, linewidth=4, label= "2018 mean and sd ("*string(n_weeks)*" weeks)")
-	plot!(Dates.dayofyear.(av2019.avTime),av2019.mean; ribbon=av2019.sd, linewidth=4, label= "2019 mean and sd ("*string(n_weeks)*" weeks)")
+	av2018_OCO2 = tempAv(Illinois2018_OCO2, n_weeks, "sif")	
+	av2019_OCO2 = tempAv(Illinois2019_OCO2, n_weeks, "sif")	
+	
+	
+p1 =	plot(Dates.dayofyear.(av2018_TROPOMI.avTime),av2018_TROPOMI.mean; ribbon=av2018_TROPOMI.sd, linewidth=4, label=false, title="TROPOMI")
+p1 =	plot!(Dates.dayofyear.(av2019_TROPOMI.avTime),av2019_TROPOMI.mean; ribbon=av2019_TROPOMI.sd, linewidth=4, label=false)
+
+p2 =	plot(Dates.dayofyear.(av2018_OCO2.avTime),av2018_OCO2.mean; ribbon=av2018_OCO2.sd, linewidth=4, label= "2018 mean and sd ("*string(n_weeks)*" weeks)", title="OCO-2")
+p2 =	plot!(Dates.dayofyear.(av2019_OCO2.avTime),av2019_OCO2.mean; ribbon=av2019_OCO2.sd, linewidth=4, label= "2019 mean and sd ("*string(n_weeks)*" weeks)")
+
+	plot(p1, p2, layout= (1,2),legend=:top)
+
 end
-
-# ╔═╡ df940696-7c7b-11eb-0668-6df03990aab1
-http://localhost:2345/?secret=qespzx0O
 
 # ╔═╡ d55bdff0-7c7b-11eb-2017-6f417d68079e
 
@@ -399,18 +409,17 @@ http://localhost:2345/?secret=qespzx0O
 # ╠═6c7f69ec-76ff-11eb-0aa9-2767374c75ba
 # ╠═b1175210-7c89-11eb-15dd-afdb7d469af7
 # ╟─fe40fcf4-7706-11eb-02c9-e9f8e2e1d59e
-# ╟─6f558260-7c5d-11eb-2f33-c7b983f49495
-# ╠═7c78f170-7c5d-11eb-3547-256ee2e742ea
-# ╠═3f8b6092-7c5b-11eb-39bc-f7e3291e6aac
-# ╠═251b84d0-7c5b-11eb-01eb-93007209c2e8
-# ╠═d651f31a-7c5b-11eb-3432-21404096f38f
-# ╠═2827c5b4-7c5c-11eb-1886-e323231c7c07
+# ╟─3e1f7372-7c99-11eb-249f-bde291b5d012
+# ╟─3f8b6092-7c5b-11eb-39bc-f7e3291e6aac
+# ╟─251b84d0-7c5b-11eb-01eb-93007209c2e8
+# ╟─d651f31a-7c5b-11eb-3432-21404096f38f
+# ╟─2827c5b4-7c5c-11eb-1886-e323231c7c07
 # ╠═72bc1716-770d-11eb-3f50-e91939e494b9
+# ╟─ad1fecac-7c99-11eb-3033-cbf183d0cdd3
 # ╟─9ea08f84-770c-11eb-31c7-850f3244c4ff
 # ╟─bed15e68-770d-11eb-16ad-19c4dc89e4d8
 # ╟─8c89d290-7709-11eb-2537-2db49c3d487b
 # ╟─72dd46f6-7709-11eb-11e3-b7cccdda854b
 # ╠═0aca52ac-7709-11eb-0414-311256298017
-# ╠═46e18090-7708-11eb-0d74-f77ec2e38bc2
-# ╠═df940696-7c7b-11eb-0668-6df03990aab1
+# ╟─46e18090-7708-11eb-0d74-f77ec2e38bc2
 # ╟─d55bdff0-7c7b-11eb-2017-6f417d68079e
