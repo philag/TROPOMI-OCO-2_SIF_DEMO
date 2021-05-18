@@ -130,8 +130,8 @@ md" **Select date range:**"
 begin
 	#startDate = Date(2020,1,1)
 	#stopDate  = Date(2020,1,15)
-	startDate = Date(2019,1,1)
-	stopDate  = Date(2019,12,31)
+	startDate = Date(2020,1,1)
+	stopDate  = Date(2021,12,31)
 	FileInd = findall(x -> x >= startDate && x <= stopDate, allDates)
 end
 
@@ -175,7 +175,7 @@ md"## Reading GeoJSON files"
 testROI=GeoJSON.read(read("./src/TROPO-DEMO.json"))
 
 # ╔═╡ 14e5f60c-6687-11eb-37f6-fbf0d9061530
-testROI.features#[1].properties["name"]
+testROI.features[1].properties["name"]
 
 # ╔═╡ ad814292-65d9-11eb-1390-35f78905835c
 ### Function to get coordinates w/o altitude for plotting and to make use of "inpolygon" from PolygonOps.jl later on:
@@ -318,9 +318,6 @@ md"
 # ╔═╡ a33e67bc-650a-11eb-2ad2-43fe662d8a78
 md"**Collecting data for the specified time period:**"
 
-# ╔═╡ 00f8867e-64f3-11eb-18f0-2f31200f7628
-#df = readNCdata(allFiles[FileInd],baseDict,mbr)
-
 # ╔═╡ 7ff0299c-7265-11eb-326b-e5659d2f2f58
 #filter!("measurement_mode" => ==(0), df)
 
@@ -342,7 +339,10 @@ readNCdata = function(NCFiles,baseDict,mbr)
 	
 	for aFile in NCFiles
 	
-		dfTmp = DataFrame()			
+		dfTmp = DataFrame()
+		
+		try	
+		
 		for aKey in keys(baseDict)
 			tmp = Dataset(aFile)[baseDict[aKey]].var[:]
 			if length(size(tmp))==1
@@ -362,20 +362,26 @@ readNCdata = function(NCFiles,baseDict,mbr)
 				end
 			end
 		end
-	
-	# filtering:
-	filter!("lon" => >=(mbr[1]), dfTmp)
-	filter!("lon" => <=(mbr[2]), dfTmp)
-	filter!("lat" => >=(mbr[3]), dfTmp)
-	filter!("lat" => <=(mbr[4]), dfTmp)		
-	# attach to final output data:
-	if size(dfTmp)!=(0,0)
-		if size(dfOut)==(0,0) 
-			dfOut = dfTmp
-		else
-			append!(dfOut, dfTmp)
+			
+		# filtering:
+		filter!("lon" => >=(mbr[1]), dfTmp)
+		filter!("lon" => <=(mbr[2]), dfTmp)
+		filter!("lat" => >=(mbr[3]), dfTmp)
+		filter!("lat" => <=(mbr[4]), dfTmp)		
+
+		
+		catch
+		@warn "Could not read file."
 		end
-	end
+			
+	# attach to final output data:
+		if size(dfTmp)!=(0,0)
+			if size(dfOut)==(0,0) 
+				dfOut = dfTmp
+			else
+				append!(dfOut, dfTmp)
+			end
+		end
 	
 	end
 
@@ -384,6 +390,9 @@ readNCdata = function(NCFiles,baseDict,mbr)
 end
 	
 end
+
+# ╔═╡ 00f8867e-64f3-11eb-18f0-2f31200f7628
+df = readNCdata(allFiles[FileInd],baseDict,mbr)
 
 # ╔═╡ eea1155e-64f5-11eb-3eed-f34a6000d5ea
 #test numberNames function:
@@ -409,15 +418,15 @@ oco2Dict[1]["time_struc"]
 
 # ╔═╡ 724200f0-7262-11eb-1b6a-3723b249389d
 begin
-	#timeOffset = datetime2unix(DateTime(1993,1,1, 0,0,0))
-	#df.utc = unix2datetime.(df.time .+ timeOffset)
+	timeOffset = datetime2unix(DateTime(1993,1,1, 0,0,0))
+	df.utc = unix2datetime.(df.time .+ timeOffset)
 end
 
 # ╔═╡ f3550094-71a5-11eb-1bd6-8150f1ad5604
 md"Add also a column with plain days for convenience:"
 
 # ╔═╡ b99cff74-650e-11eb-3373-1d52b025e9a5
-#df.Date = Date.(df.utc)
+df.Date = Date.(df.utc)
 
 # ╔═╡ 4a8de51e-65db-11eb-2e99-c70cb7193464
 md"## What percentage of each footprint covers the spatial polygon?"
@@ -733,7 +742,7 @@ begin
 	Plots.plot(vegPolygon, legend=false, fill = (34,0.5,:gray))
 	Sdng = getSdngVerts(df,id)
 	testPoints = getPoints(Sdng , UInt8(10))
-	#Plots.scatter!(testPoints)
+	Plots.scatter!(testPoints)
 	
 	touchPoly = getPoly(Sdng.lon,Sdng.lat)
 	Plots.plot!(touchPoly, linewidth=4)
@@ -751,7 +760,7 @@ let
 	## Or half a month?:
 	#idxTime = findall((month.(df.Date) .== 5) .& (day.(df.Date) .<= 15))
 
-	out, lons, lats = oversample(df[idxTime,:],tryparse(Float64,resolution), 										 mbr,"sif")
+	out, lons, lats = oversample(df[:,:],tryparse(Float64,resolution), 										 mbr,"sif")
 	
 		
 	Plots.heatmap(lons, lats, out, color= :viridis)#, clim=(-0.2,0.9))
@@ -838,7 +847,7 @@ end
 # ╟─6288c4c6-6585-11eb-24c3-4b39125563bb
 # ╠═35ce9bee-62a7-11eb-0118-9528ab9f33d8
 # ╠═254018d0-62b7-11eb-2b1d-138ad8d088b1
-# ╠═82ade7fe-62b7-11eb-3aa4-e9b8ba1f5a58
+# ╟─82ade7fe-62b7-11eb-3aa4-e9b8ba1f5a58
 # ╟─50f46e82-64c3-11eb-29d9-933218ab2e66
 # ╟─b30830b2-71a3-11eb-2699-53e1f7bcdb43
 # ╟─a33e67bc-650a-11eb-2ad2-43fe662d8a78
@@ -853,7 +862,7 @@ end
 # ╟─f62cce7c-725a-11eb-3b3b-ad594257cda6
 # ╠═f33daa04-725a-11eb-2831-6fc756438afe
 # ╠═724200f0-7262-11eb-1b6a-3723b249389d
-# ╠═f3550094-71a5-11eb-1bd6-8150f1ad5604
+# ╟─f3550094-71a5-11eb-1bd6-8150f1ad5604
 # ╠═b99cff74-650e-11eb-3373-1d52b025e9a5
 # ╟─4a8de51e-65db-11eb-2e99-c70cb7193464
 # ╟─26556eb4-664f-11eb-16f6-2b8c0c1a5945
@@ -865,12 +874,12 @@ end
 # ╠═964d3d38-665d-11eb-1eb4-adbb37c289b6
 # ╟─98684c54-6660-11eb-175f-c96664cc2f04
 # ╟─0ff6e15e-6661-11eb-3e48-3b73b977b0fb
-# ╟─0cda4bd4-6691-11eb-20c7-9b5097e1e7e9
-# ╟─388e8398-6692-11eb-16c8-2bcccd929b61
+# ╠═0cda4bd4-6691-11eb-20c7-9b5097e1e7e9
+# ╠═388e8398-6692-11eb-16c8-2bcccd929b61
 # ╠═9ba7d79a-6692-11eb-30e8-8d548156f71c
 # ╟─46c0b6a0-6824-11eb-2407-a37dca8ef4bf
-# ╠═6988f26c-682c-11eb-3261-ed8a7c839fb4
-# ╠═2140d9a2-682c-11eb-0be0-8d4cba6681bb
+# ╟─6988f26c-682c-11eb-3261-ed8a7c839fb4
+# ╟─2140d9a2-682c-11eb-0be0-8d4cba6681bb
 # ╠═5623b812-6825-11eb-091d-3b676411207c
 # ╠═d51c868a-760d-11eb-3420-9b51e5d9299a
 # ╠═e28b9fc0-6a57-11eb-183f-6f47f1c39d6a
